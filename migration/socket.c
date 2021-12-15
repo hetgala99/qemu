@@ -33,6 +33,7 @@ struct SocketOutgoingArgs {
 } outgoing_args, outgoing_args1;
 
 const char *src_uri = "10.96.166.102:7789";
+/* creating a source uri */
 
 void socket_send_channel_create(QIOTaskFunc f, void *data)
 { 
