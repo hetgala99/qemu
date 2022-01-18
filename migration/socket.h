@@ -19,15 +19,25 @@
 
 #include "io/channel.h"
 #include "io/task.h"
+#include "io/net-listener.h"
 
-void socket_send_channel_create(QIOTaskFunc f, void *data);
+struct SocketArgs {
+    SocketAddress *dst_addr;
+    SocketAddress *src_addr;
+    uint8_t multifd_channels;
+};
+
+int total_multifd_channels(void);
+void socket_send_channel_create(QIOTaskFunc f, void *data, int idx);
 int socket_send_channel_destroy(QIOChannel *send);
 
 void socket_start_incoming_migration(const char *str, Error **errp);
 
-void socket_start_outgoing_migration(MigrationState *s, const char *str,
-                                     const char *src_uri, Error **errp);  
+void socket_start_outgoing_migration(MigrationState *s, const char *dst_str,
+                                     const char *src_str, Error **errp);  
 
-void store_multifd_migration_params(const char *str, Error **erp);
+void store_multifd_migration_params(const char *dst_uri, const char *src_uri, 
+                                    uint8_t multifd_channels, int idx, Error **erp);
+
 
 #endif

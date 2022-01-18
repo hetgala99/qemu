@@ -28,24 +28,61 @@
 #include "trace.h"
 #include "multifd.h"
 
+#define MAX_MULTIFD_SOCKETS  20
+
 struct SocketOutgoingArgs {
     SocketAddress *saddr;
-} outgoing_args, outgoing_args1;
+} outgoing_args;
 
-const char *src_uri = "10.96.166.102:7789";
-/* creating a source uri */
+/*
+typedef struct SocketArgs {
+    SocketAddress *dst_addr;
+    SocketAddress *src_addr;
+    uint8_t multifd_channels;
+} multifd_socket_args;
+*/
 
-void socket_send_channel_create(QIOTaskFunc f, void *data)
+struct SocketArgs *pt = NULL;
+
+int total_multifd_channels(void)
+{
+    struct SocketArgs *cap = pt;
+
+    int total_multifd_channels = 0;
+    for (int i=0; i<MAX_MULTIFD_SOCKETS; i++) {
+        total_multifd_channels += (int)cap[i].multifd_channels;
+    }
+    return total_multifd_channels;
+}
+
+void socket_send_channel_create(QIOTaskFunc f, void *data, int idx)
 { 
+/*
     MultiFDSendParams *m =  data;  
     QIOChannelSocket *sioc = qio_channel_socket_new();
+
     if((m->id) < 2) {
         qio_channel_socket_connect_async(sioc, outgoing_args.saddr,
                                      f, data, NULL, NULL, NULL);
     } else {
-	qio_channel_socket_connect_async(sioc, outgoing_args1.saddr,
-                                     f, data, NULL, NULL, src_uri);
-    } 
+	qio_channel_socket_connect_async(sioc, outgoing_args.saddr,
+                                      f, data, NULL, NULL, src_uri);
+    }
+
+    QIOChannelSocket *sioc = qio_channel_socket_new();
+    for(int i=0; i<MAX_MULTIFD_SOCKETS; i++) {
+        uint8_t channel_count = pt[i].multifd_channels;
+        while (channel_count) {
+            qio_channel_socket_connect_async(sioc, pt[i].dst_addr,
+                                      f, data, NULL, NULL, src_uri);
+            channel_count -= 1;
+        }    
+    }
+    free(pt);
+*/
+    QIOChannelSocket *sioc = qio_channel_socket_new();
+    qio_channel_socket_connect_async(sioc, pt[idx].dst_addr,
+                                 f, data, NULL, NULL, pt[idx].src_addr);
 }
 
 int socket_send_channel_destroy(QIOChannel *send)
@@ -132,15 +169,28 @@ void socket_start_outgoing_migration(MigrationState *s,
     error_propagate(errp, err);
 }
 
-void store_multifd_migration_params(const char *str, 
-                                    Error **errp) 
+void store_multifd_migration_params(const char *dst_uri,
+                                    const char *src_uri, 
+                                    uint8_t multifd_channels,
+                                    int idx, Error **errp) 
 { 
     Error *err = NULL;
-    SocketAddress *saddr = socket_parse(str, &err);
+    const char *p1 = NULL, *p2 = NULL;
+
+    if(pt == NULL) {
+        pt = (struct SocketArgs *)malloc(sizeof(struct SocketArgs) * MAX_MULTIFD_SOCKETS);   
+    }
+    SocketAddress *dst_addr;
+    SocketAddress *src_addr;
+    if(strstart(dst_uri, "tcp:", &p1) && strstart(src_uri, "tcp:", &p2)) {
+         dst_addr = socket_parse(p1 ? p1 : dst_uri, &err);
+         src_addr = socket_parse(p2 ? p2 : src_uri, &err);
+    }
+   
     if(!err) {
-        /* in case previous migration leaked it */
-        qapi_free_SocketAddress(outgoing_args1.saddr);
-        outgoing_args1.saddr = saddr;
+        pt[idx].dst_addr = dst_addr;
+        pt[idx].src_addr = src_addr;
+        pt[idx].multifd_channels = multifd_channels;
     }
     error_propagate(errp, err);
 }
