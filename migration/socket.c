@@ -130,7 +130,7 @@ static void socket_outgoing_migration(QIOTask *task,
 static void
 socket_start_outgoing_migration_internal(MigrationState *s,
                                          SocketAddress *saddr,
-                                         const char *src_uri,
+                                         SocketAddress *src_addr,
                                          Error **errp) 
 {
     QIOChannelSocket *sioc = qio_channel_socket_new();
@@ -152,19 +152,20 @@ socket_start_outgoing_migration_internal(MigrationState *s,
                                      socket_outgoing_migration,
                                      data,
                                      socket_connect_data_free,
-                                     NULL, NULL); 
+                                     NULL, src_addr); 
 }
 
 
 void socket_start_outgoing_migration(MigrationState *s,
-                                     const char *str,
-                                     const char *src_uri,
+                                     const char *dst_str,
+                                     const char *src_str,
                                      Error **errp) 
 {
     Error *err = NULL;
-    SocketAddress *saddr = socket_parse(str, &err); 
+    SocketAddress *dst_addr = socket_parse(dst_str, &err);
+    SocketAddress *src_addr = socket_parse(src_str, &err); 
     if (!err) {
-        socket_start_outgoing_migration_internal(s, saddr, src_uri, &err);
+        socket_start_outgoing_migration_internal(s, dst_addr, src_addr, &err);
     }
     error_propagate(errp, err);
 }
