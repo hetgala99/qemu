@@ -2319,8 +2319,8 @@ void qmp_migrate(MigrateUriList *uri1, bool has_blk, bool blk,
     MigrationState *s = migrate_get_current();
     const char *p1 = NULL, *p2 = NULL;
     
-    const char *dest_uri = uri1->next->value->destination_uri;    
-    const char *src_uri = uri1->next->value->source_uri;
+    const char *dest_uri = uri1->value->destination_uri;    
+    const char *src_uri = uri1->value->source_uri;
 
     MigrateUriList *cap;
     int i=0;
