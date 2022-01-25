@@ -254,7 +254,7 @@ socket_start_incoming_migration_internal(SocketAddress *saddr,
     qio_net_listener_set_name(listener, "migration-socket-listener");
 
     if (migrate_use_multifd()) {
-        num = total_multifd_channels();
+        num = 10;
     }
 
     if (qio_net_listener_open_sync(listener, saddr, num, errp) < 0) {

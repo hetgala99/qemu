@@ -455,8 +455,6 @@ void migrate_add_address(SocketAddress *address)
 static void qemu_start_incoming_migration(const char *uri, Error **errp)
 {
     const char *p = NULL;
-    const char *p1 = "10.112.37.180:6789";
-    const char *p2 = "10.112.36.204:6790"; 
    
     migrate_protocol_allow_multifd(false); /* reset it anyway */
     qapi_event_send_migration(MIGRATION_STATUS_SETUP);
@@ -465,8 +463,6 @@ static void qemu_start_incoming_migration(const char *uri, Error **errp)
         strstart(uri, "vsock:", NULL)) {
         migrate_protocol_allow_multifd(true);
         socket_start_incoming_migration(p ? p : uri, errp);
-        socket_start_incoming_migration(p1, errp);
-        socket_start_incoming_migration(p2, errp);        
 #ifdef CONFIG_RDMA
     } else if (strstart(uri, "rdma:", &p)) {
         rdma_start_incoming_migration(p, errp);
@@ -2089,7 +2085,28 @@ void migrate_del_blocker(Error *reason)
     migration_blockers = g_slist_remove(migration_blockers, reason);
 }
 
-void qmp_migrate_incoming(const char *uri, Error **errp)
+static strList *strList_from_comma_list(const char *in) {
+    strList *res = NULL;
+    strList **tail = &res;
+
+    while (in && in[0]) {
+        char *comma = strchr(in, ',');
+        char *value;
+
+        if (comma) {
+            value = g_strndup(in, comma - in);
+            in = comma + 1; /* skip the , */
+        } else {
+            value = g_strdup(in);
+            in = NULL;
+        }
+        QAPI_LIST_APPEND(tail, value);
+    }
+
+    return res;
+}
+
+void qmp_migrate_incoming(const char *uri1, Error **errp)
 {
 /*
     const char *uri = "tcp:10.112.37.180:6789";
@@ -2110,7 +2127,12 @@ void qmp_migrate_incoming(const char *uri, Error **errp)
         return;
     }
 
-    qemu_start_incoming_migration(uri, &local_err);
+    strList *st = strList_from_comma_list(uri1);
+    strList *r;
+    for (r = st; r; r = r->next) {
+        const char *uri = r->value;
+        qemu_start_incoming_migration(uri, &local_err);
+    }
 
     if (local_err) {
         yank_unregister_instance(MIGRATION_YANK_INSTANCE);
