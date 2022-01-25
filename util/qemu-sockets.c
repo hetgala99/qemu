@@ -46,7 +46,6 @@
 # define AI_NUMERICSERV 0
 #endif
 
-uint32_t port_inc =  0;
  
 static int inet_getport(struct addrinfo *e)
 {
@@ -366,6 +365,7 @@ static int inet_connect_addr(const InetSocketAddress *dst_addr,
                              struct addrinfo *addr, Error **errp)
 {
     int sock, rc;
+    static uint16_t port_inc;
 
     sock = qemu_socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
     if (sock < 0) {
@@ -378,9 +378,14 @@ static int inet_connect_addr(const InetSocketAddress *dst_addr,
     /* to bind the socket */
     
     struct sockaddr_in servaddr;
+
+    /* bind to a specific interface in the internet domain */
+    /* to make sure the sin_zero filed is cleared */
+
+    memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = inet_addr(src_addr->host);
-    servaddr.sin_port = htons(*src_addr->port + port_inc++);
+    servaddr.sin_port = htons((uintptr_t) src_addr->port + port_inc++);
 
     if( bind(sock, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
         error_setg_errno(errp, errno, "Failed to bind socket");

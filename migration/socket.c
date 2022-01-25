@@ -30,7 +30,6 @@
 
 #define MAX_MULTIFD_SOCKETS  20
 
-int length = 0;
 
 struct SocketOutgoingArgs {
     SocketAddress *saddr;
@@ -45,6 +44,7 @@ struct SocketArgs {
 
 struct SocketArgs *pt = NULL;
 
+int length = 0;
 
 int total_multifd_channels(void)
 {
@@ -52,7 +52,11 @@ int total_multifd_channels(void)
     struct SocketArgs *cap = &ptr;
 */
     int channel_sum = 0;
-    for (int i=0; i<length; i++) {
+    static int i = 0;
+    for (; i<length; i++) {
+        if (i == length) {
+            break;
+        }
         channel_sum += (pt+i)->multifd_channels;
     }
     return channel_sum;
@@ -194,7 +198,6 @@ void store_multifd_migration_params(const char *dst_uri,
 { 
     Error *err = NULL;
     const char *p1 = NULL, *p2 = NULL;
-
     if(pt == NULL) {
         pt = (struct SocketArgs *)malloc(sizeof(struct SocketArgs) * MAX_MULTIFD_SOCKETS);   
     }
