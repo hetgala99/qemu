@@ -2293,7 +2293,7 @@ void qmp_migrate(MigrateUriList *uri1, bool has_blk, bool blk,
 {
     Error *local_err = NULL;
     MigrationState *s = migrate_get_current();
-    const char *p1 = NULL, *p2 = NULL;
+    const char *p = NULL;
     
     const char *dest_uri = uri1->next->value->destination_uri;    
     const char *src_uri = uri1->next->value->source_uri;
@@ -2320,22 +2320,22 @@ void qmp_migrate(MigrateUriList *uri1, bool has_blk, bool blk,
     }
 
     migrate_protocol_allow_multifd(false);
-    if ((strstart(dest_uri, "tcp:", &p1) && (strstart(src_uri, "tcp:", &p2))) ||
-        (strstart(dest_uri, "unix:", NULL) && (strstart(src_uri, "unix:", NULL))) ||
-        (strstart(dest_uri, "vsock:", NULL) && (strstart(src_uri, "vsock:", NULL)))) {
+    if (strstart(dest_uri, "tcp:", &p) ||
+        strstart(dest_uri, "unix:", NULL) ||
+        strstart(dest_uri, "vsock:", NULL)) {
         migrate_protocol_allow_multifd(true);
 /*
         store_multifd_migration_params(uri1, &local_err);
 */
-        socket_start_outgoing_migration(s, p1 ? p1 : dest_uri, p2 ? p2 : src_uri, &local_err); 
+        socket_start_outgoing_migration(s, p ? p : dest_uri, src_uri, &local_err); 
 #ifdef CONFIG_RDMA
-    } else if (strstart(dest_uri, "rdma:", &p1)) {
-        rdma_start_outgoing_migration(s, p1, &local_err);
+    } else if (strstart(dest_uri, "rdma:", &p)) {
+        rdma_start_outgoing_migration(s, p, &local_err);
 #endif
-    } else if (strstart(dest_uri, "exec:", &p1)) {
-        exec_start_outgoing_migration(s, p1, &local_err);
-    } else if (strstart(dest_uri, "fd:", &p1)) {
-        fd_start_outgoing_migration(s, p1, &local_err);
+    } else if (strstart(dest_uri, "exec:", &p)) {
+        exec_start_outgoing_migration(s, p, &local_err);
+    } else if (strstart(dest_uri, "fd:", &p)) {
+        fd_start_outgoing_migration(s, p, &local_err);
     } else {
         if (!(has_resume && resume)) {
             yank_unregister_instance(MIGRATION_YANK_INSTANCE);
