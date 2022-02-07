@@ -21,16 +21,13 @@
 #include "io/task.h"
 #include "io/net-listener.h"
 
-/*
 struct SocketArgs {
     SocketAddress *dst_addr;
     SocketAddress *src_addr;
     uint8_t multifd_channels;
 };
-*/
+
 int total_multifd_channels(void);
-int *get_multifd_channel_array(int count);
-int multifd_index(int i);
 void socket_send_channel_create(QIOTaskFunc f, void *data, int idx);
 int socket_send_channel_destroy(QIOChannel *send);
 

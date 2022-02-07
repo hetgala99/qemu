@@ -885,7 +885,7 @@ int multifd_save_setup(Error **errp)
     uint32_t page_count = MULTIFD_PACKET_SIZE / qemu_target_page_size();
     uint8_t i;
     MigrationState *s;
-    int idx;
+    int idx = 0;
 
     if (!migrate_use_multifd()) {
         return 0;
@@ -921,7 +921,6 @@ int multifd_save_setup(Error **errp)
         p->packet->version = cpu_to_be32(MULTIFD_VERSION);
         p->name = g_strdup_printf("multifdsend_%d", i);
         p->tls_hostname = g_strdup(s->hostname);
-        idx = multifd_index(i);
         socket_send_channel_create(multifd_new_send_channel_async, p, idx);
     }
 
