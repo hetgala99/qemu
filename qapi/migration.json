@@ -1421,29 +1421,6 @@
 { 'command': 'migrate-continue', 'data': {'state': 'MigrationStatus'} }
 
 ##
-# @MigrateUri:
-#
-# Information regarding which source interface is connected to which destination interface, number of multifd channels over that interface and the bandwidth limit to be applied.
-#
-# @source-uri: the Uniform Resource Identifier of the source VM
-# 
-# @destination-uri: the Uniform Resource Identifier of the destination VM 
-# 
-# @multifd-channels: number of channels used to migrate data in parallel for
-#                    for specific source-uri and destination-uri. 
-#                    Default value in this case is 1 (Since 4.0)
-# 
-# @bandwidth-limit: to set maximum speed for migration for given multifd-channels. 
-#                   Maximum speed in bytes per second. (Since 2.8)
-#
-##
-{ 'struct' : 'MigrateUri',
-  'data' : { 'source-uri' : 'str',
-             'destination-uri' : 'str',
-             '*multifd-channels' : 'uint8',
-             '*bandwidth-limit' : 'uint64'} }
-
-##
 # @migrate:
 #
 # Migrates the current running guest to another Virtual Machine.
@@ -1475,17 +1452,12 @@
 #
 # Example:
 #
-# -> { "execute": "migrate", 
-#      "arguments": { "uri": [ { "source-uri": "tcp:10.112.37.192",  "destination-uri": "tcp:10.112.37.180:6789" },
-#                              { "source-uri": "tcp:10.112.37.192",  "destination-uri": "tcp:10.112.37.180:6789", 
-#                                 "multifd-channels": 3, "bandwidth-limit": 10000000 },
-#                              { "source-uri": "tcp:10.112.37.196",  "destination-uri": "tcp:10.112.37.204:7789", 
-#                                 "multifd-channels": 3, "bandwidth-limit": 10000000 } ] } }
+# -> { "execute": "migrate", "arguments": { "uri": "tcp:0:4446" } }
 # <- { "return": {} }
 #
 ##
 { 'command': 'migrate',
-  'data': {'uri': ['MigrateUri'], '*blk': 'bool', '*inc': 'bool',
+  'data': {'uri': 'str', '*blk': 'bool', '*inc': 'bool',
            '*detach': 'bool', '*resume': 'bool' } }
 
 ##
@@ -1515,10 +1487,8 @@
 # Example:
 #
 # -> { "execute": "migrate-incoming",
-#      "arguments": "uri" : [ "tcp:10.112.37.180:6789", "tcp:10.112.37.180:6789",           
-#                         "tcp:10.112.36.204:6790" ] }
+#      "arguments": { "uri": "tcp::4446" } }
 # <- { "return": {} }
-
 #
 ##
 { 'command': 'migrate-incoming', 'data': {'uri': 'str' } }

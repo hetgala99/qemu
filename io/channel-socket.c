@@ -192,15 +192,17 @@ void qio_channel_socket_connect_async(QIOChannelSocket *ioc,
                                       gpointer opaque,
                                       GDestroyNotify destroy,
                                       GMainContext *context,
-                                      SocketAddress *src_addr)  
+                                      const char *src_uri)  
 {
     QIOTask *task = qio_task_new(
         OBJECT(ioc), callback, opaque, destroy);
     struct SrcDestAddress *data = g_new0(struct SrcDestAddress, 1);
+    Error *err = NULL;
  
     data->dst_addr = QAPI_CLONE(SocketAddress, addr);
     
-    data->src_addr = QAPI_CLONE(SocketAddress, src_addr);
+    SocketAddress *s_addrCopy = socket_parse(src_uri, &err);
+    data->src_addr = QAPI_CLONE(SocketAddress, s_addrCopy);
 
     /* socket_connect() does a non-blocking connect(), but it
      * still blocks in DNS lookups, so we must use a thread */

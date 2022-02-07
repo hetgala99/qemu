@@ -455,7 +455,7 @@ void migrate_add_address(SocketAddress *address)
 static void qemu_start_incoming_migration(const char *uri, Error **errp)
 {
     const char *p = NULL;
-    const char *p1 = "10.112.36.204:6790"; 
+    const char *p1 = "10.96.167.223:6789"; 
    
     migrate_protocol_allow_multifd(false); /* reset it anyway */
     qapi_event_send_migration(MIGRATION_STATUS_SETUP);
@@ -2089,9 +2089,6 @@ void migrate_del_blocker(Error *reason)
 
 void qmp_migrate_incoming(const char *uri, Error **errp)
 {
-/*
-    const char *uri = "tcp:10.112.37.180:6789";
-*/  
     Error *local_err = NULL;
     static bool once = true;
 
@@ -2287,25 +2284,15 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
     return true;
 }
 
-void qmp_migrate(MigrateUriList *uri1, bool has_blk, bool blk,
+void qmp_migrate(const char *uri, bool has_blk, bool blk,
                  bool has_inc, bool inc, bool has_detach, bool detach,
                  bool has_resume, bool resume, Error **errp)
 {
     Error *local_err = NULL;
     MigrationState *s = migrate_get_current();
     const char *p = NULL;
-    
-    const char *dest_uri = uri1->next->value->destination_uri;    
-    const char *src_uri = uri1->next->value->source_uri;
-
-    MigrateUriList *cap;
-    int i=0;
-    for (cap = uri1->next; cap; cap = cap->next) {
-        store_multifd_migration_params(cap->value->destination_uri, 
-                                   cap->value->source_uri,
-                                   cap->value->multifd_channels,
-                                   i++,  &local_err);
-    }
+    const char *ext_uri = "10.96.167.223:6789";
+    const char *src_uri = "10.96.166.102:7789";    
 
     if (!migrate_prepare(s, has_blk && blk, has_inc && inc,
                          has_resume && resume, errp)) {
@@ -2320,21 +2307,19 @@ void qmp_migrate(MigrateUriList *uri1, bool has_blk, bool blk,
     }
 
     migrate_protocol_allow_multifd(false);
-    if (strstart(dest_uri, "tcp:", &p) ||
-        strstart(dest_uri, "unix:", NULL) ||
-        strstart(dest_uri, "vsock:", NULL)) {
+    if (strstart(uri, "tcp:", &p) ||
+        strstart(uri, "unix:", NULL) ||
+        strstart(uri, "vsock:", NULL)) {
         migrate_protocol_allow_multifd(true);
-/*
-        store_multifd_migration_params(uri1, &local_err);
-*/
-        socket_start_outgoing_migration(s, p ? p : dest_uri, src_uri, &local_err); 
+        store_multifd_migration_params(ext_uri, &local_err);
+        socket_start_outgoing_migration(s, p ? p : uri, src_uri, &local_err); 
 #ifdef CONFIG_RDMA
-    } else if (strstart(dest_uri, "rdma:", &p)) {
+    } else if (strstart(uri, "rdma:", &p)) {
         rdma_start_outgoing_migration(s, p, &local_err);
 #endif
-    } else if (strstart(dest_uri, "exec:", &p)) {
+    } else if (strstart(uri, "exec:", &p)) {
         exec_start_outgoing_migration(s, p, &local_err);
-    } else if (strstart(dest_uri, "fd:", &p)) {
+    } else if (strstart(uri, "fd:", &p)) {
         fd_start_outgoing_migration(s, p, &local_err);
     } else {
         if (!(has_resume && resume)) {

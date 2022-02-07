@@ -1510,29 +1510,11 @@ void hmp_migrate(Monitor *mon, const QDict *qdict)
     bool blk = qdict_get_try_bool(qdict, "blk", false);
     bool inc = qdict_get_try_bool(qdict, "inc", false);
     bool resume = qdict_get_try_bool(qdict, "resume", false);
-/*
-    const char *uri = qdict_get_str(qdict, "uri"); 
-*/
-    const char *src_uri = qdict_get_str(qdict, "source-uri");
-    const char *dst_uri = qdict_get_str(qdict, "destination-uri");
-    uint8_t channels = qdict_get_int(qdict, "multifd-channels");
-    uint64_t max_bandwidth = qdict_get_int(qdict, "bandwidth-limit");
+    const char *uri = qdict_get_str(qdict, "uri");
     Error *err = NULL;
 
-    MigrateUriList *caps = NULL;
-    MigrateUri *value;
-
-    value = g_malloc0(sizeof(*value));
-    value->source_uri = (char*)src_uri;
-    value->destination_uri = (char*)dst_uri;
-    value->multifd_channels = channels;
-    value->bandwidth_limit = max_bandwidth;
-    QAPI_LIST_PREPEND(caps, value);
-
-    qmp_migrate(caps, !!blk, blk, !!inc, inc,
+    qmp_migrate(uri, !!blk, blk, !!inc, inc,
                 false, false, true, resume, &err);
-    qapi_free_MigrateUriList(caps);
-
     if (hmp_handle_error(mon, err)) {
         return;
     }
