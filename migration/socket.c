@@ -45,6 +45,7 @@ struct SocketArgs {
 
 struct SocketArgs *pt = NULL;
 
+
 int total_multifd_channels(void)
 {
 /*  
@@ -248,9 +249,9 @@ socket_start_incoming_migration_internal(SocketAddress *saddr,
     int num = 1;
 
     qio_net_listener_set_name(listener, "migration-socket-listener");
-    
+
     if (migrate_use_multifd()) {
-        num = 10;
+        num = total_multifd_channels();
     }
 
     if (qio_net_listener_open_sync(listener, saddr, num, errp) < 0) {
