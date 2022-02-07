@@ -26,17 +26,26 @@
 #include "io/channel-socket.h"
 #include "io/net-listener.h"
 #include "trace.h"
-
+#include "multifd.h"
 
 struct SocketOutgoingArgs {
     SocketAddress *saddr;
-} outgoing_args;
+} outgoing_args, outgoing_args1;
+
+const char *src_uri = "10.112.37.196:7789";
+/* creating a source uri */
 
 void socket_send_channel_create(QIOTaskFunc f, void *data)
-{
+{ 
+    MultiFDSendParams *m =  data;  
     QIOChannelSocket *sioc = qio_channel_socket_new();
-    qio_channel_socket_connect_async(sioc, outgoing_args.saddr,
-                                     f, data, NULL, NULL);
+    if((m->id) < 2) {
+        qio_channel_socket_connect_async(sioc, outgoing_args.saddr,
+                                     f, data, NULL, NULL, NULL);
+    } else {
+	qio_channel_socket_connect_async(sioc, outgoing_args1.saddr,
+                                     f, data, NULL, NULL, src_uri);
+    } 
 }
 
 int socket_send_channel_destroy(QIOChannel *send)
@@ -84,7 +93,8 @@ static void socket_outgoing_migration(QIOTask *task,
 static void
 socket_start_outgoing_migration_internal(MigrationState *s,
                                          SocketAddress *saddr,
-                                         Error **errp)
+                                         const char *src_uri,
+                                         Error **errp) 
 {
     QIOChannelSocket *sioc = qio_channel_socket_new();
     struct SocketConnectData *data = g_new0(struct SocketConnectData, 1);
@@ -105,17 +115,32 @@ socket_start_outgoing_migration_internal(MigrationState *s,
                                      socket_outgoing_migration,
                                      data,
                                      socket_connect_data_free,
-                                     NULL);
+                                     NULL, NULL); 
 }
+
 
 void socket_start_outgoing_migration(MigrationState *s,
                                      const char *str,
-                                     Error **errp)
+                                     const char *src_uri,
+                                     Error **errp) 
 {
     Error *err = NULL;
-    SocketAddress *saddr = socket_parse(str, &err);
+    SocketAddress *saddr = socket_parse(str, &err); 
     if (!err) {
-        socket_start_outgoing_migration_internal(s, saddr, &err);
+        socket_start_outgoing_migration_internal(s, saddr, src_uri, &err);
+    }
+    error_propagate(errp, err);
+}
+
+void store_multifd_migration_params(const char *str, 
+                                    Error **errp) 
+{ 
+    Error *err = NULL;
+    SocketAddress *saddr = socket_parse(str, &err);
+    if(!err) {
+        /* in case previous migration leaked it */
+        qapi_free_SocketAddress(outgoing_args1.saddr);
+        outgoing_args1.saddr = saddr;
     }
     error_propagate(errp, err);
 }
