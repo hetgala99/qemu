@@ -51,7 +51,7 @@ int total_multifd_channels(void)
 /*  
     struct SocketArgs *cap = &ptr;
 */
-    int channel_sum = 0;
+    static int channel_sum = 0;
     static int i = 0;
     for (; i<length; i++) {
         if (i == length) {
@@ -254,7 +254,7 @@ socket_start_incoming_migration_internal(SocketAddress *saddr,
     qio_net_listener_set_name(listener, "migration-socket-listener");
 
     if (migrate_use_multifd()) {
-        num = 10;
+        num = total_multifd_channels();
     }
 
     if (qio_net_listener_open_sync(listener, saddr, num, errp) < 0) {
