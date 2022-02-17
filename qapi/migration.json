@@ -1421,11 +1421,26 @@
 { 'command': 'migrate-continue', 'data': {'state': 'MigrationStatus'} }
 
 ##
+# @MigrateUri:
+#
+# Information regarding which source interface is connected to which
+# destination interface and number of multifd channels over each interface.
+#
+# @source-uri: the Uniform Resource Identifier of the source VM
+#
+# @destination-uri: the Uniform Resource Identifier of the destination VM
+#
+##
+{ 'struct' : 'MigrateUri',
+  'data' : { 'source-uri' : 'str',
+             'destination-uri' : 'str' } }
+
+##
 # @migrate:
 #
 # Migrates the current running guest to another Virtual Machine.
 #
-# @uri: the Uniform Resource Identifier of the destination VM
+# @uri: the Uniform Resource Identifier of specific destination and source VM pair
 #
 # @blk: do block migration (full disk copy)
 #
@@ -1452,12 +1467,13 @@
 #
 # Example:
 #
-# -> { "execute": "migrate", "arguments": { "uri": "tcp:0:4446" } }
+# -> { "execute": "migrate", "arguments": { "uri": { "source-uri" : "tcp:0:4446",
+#                                           "destination-uri" : "tcp:2:4476" } } }
 # <- { "return": {} }
 #
 ##
 { 'command': 'migrate',
-  'data': {'uri': 'str', '*blk': 'bool', '*inc': 'bool',
+  'data': {'uri': 'MigrateUri', '*blk': 'bool', '*inc': 'bool',
            '*detach': 'bool', '*resume': 'bool' } }
 
 ##

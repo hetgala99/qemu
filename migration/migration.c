@@ -2282,13 +2282,16 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
     return true;
 }
 
-void qmp_migrate(const char *uri, bool has_blk, bool blk,
-                 bool has_inc, bool inc, bool has_detach, bool detach,
-                 bool has_resume, bool resume, Error **errp)
+void qmp_migrate(MigrateUri *uri, bool has_blk,
+                 bool blk, bool has_inc, bool inc, bool has_detach,
+                 bool detach, bool has_resume, bool resume, Error **errp)
 {
     Error *local_err = NULL;
     MigrationState *s = migrate_get_current();
-    const char *p = NULL;
+    const char *p1 = NULL, *p2 = NULL;
+
+    const char *dst_uri = uri->destination_uri;
+    const char *src_uri = uri->source_uri;
 
     if (!migrate_prepare(s, has_blk && blk, has_inc && inc,
                          has_resume && resume, errp)) {
@@ -2303,19 +2306,20 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
     }
 
     migrate_protocol_allow_multifd(false);
-    if (strstart(uri, "tcp:", &p) ||
-        strstart(uri, "unix:", NULL) ||
-        strstart(uri, "vsock:", NULL)) {
+    if ((strstart(dst_uri, "tcp:", &p1) && strstart(src_uri, "tcp:", &p2)) ||
+        strstart(dst_uri, "unix:", NULL) ||
+        strstart(dst_uri, "vsock:", NULL)) {
         migrate_protocol_allow_multifd(true);
-        socket_start_outgoing_migration(s, p ? p : uri, &local_err);
+        socket_start_outgoing_migration(s, p1 ? p1 : dst_uri,
+                                    p2 ? p2 : src_uri, &local_err);
 #ifdef CONFIG_RDMA
-    } else if (strstart(uri, "rdma:", &p)) {
-        rdma_start_outgoing_migration(s, p, &local_err);
+    } else if (strstart(dst_uri, "rdma:", &p)) {
+        rdma_start_outgoing_migration(s, p1, &local_err);
 #endif
-    } else if (strstart(uri, "exec:", &p)) {
-        exec_start_outgoing_migration(s, p, &local_err);
-    } else if (strstart(uri, "fd:", &p)) {
-        fd_start_outgoing_migration(s, p, &local_err);
+    } else if (strstart(dst_uri, "exec:", &p1)) {
+        exec_start_outgoing_migration(s, p1, &local_err);
+    } else if (strstart(dst_uri, "fd:", &p1)) {
+        fd_start_outgoing_migration(s, p1, &local_err);
     } else {
         if (!(has_resume && resume)) {
             yank_unregister_instance(MIGRATION_YANK_INSTANCE);

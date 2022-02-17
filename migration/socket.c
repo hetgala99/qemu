@@ -28,24 +28,28 @@
 #include "trace.h"
 
 
-struct SocketOutgoingArgs {
-    SocketAddress *saddr;
-} outgoing_args;
+struct SocketArgs {
+    SocketAddress *dst_addr;
+    SocketAddress *src_addr;
+} socket_args;
 
 void socket_send_channel_create(QIOTaskFunc f, void *data)
 {
     QIOChannelSocket *sioc = qio_channel_socket_new();
-    qio_channel_socket_connect_async(sioc, outgoing_args.saddr,
-                                     f, data, NULL, NULL);
+    qio_channel_socket_connect_async(sioc, socket_args.dst_addr,
+                                     socket_args.src_addr, f,
+                                     data, NULL, NULL);
 }
 
 int socket_send_channel_destroy(QIOChannel *send)
 {
     /* Remove channel */
     object_unref(OBJECT(send));
-    if (outgoing_args.saddr) {
-        qapi_free_SocketAddress(outgoing_args.saddr);
-        outgoing_args.saddr = NULL;
+    if (socket_args.dst_addr || socket_args.src_addr) {
+        qapi_free_SocketAddress(socket_args.dst_addr);
+        qapi_free_SocketAddress(socket_args.src_addr);
+        socket_args.dst_addr = NULL;
+        socket_args.src_addr = NULL;
     }
     return 0;
 }
@@ -83,7 +87,8 @@ static void socket_outgoing_migration(QIOTask *task,
 
 static void
 socket_start_outgoing_migration_internal(MigrationState *s,
-                                         SocketAddress *saddr,
+                                         SocketAddress *dst_addr,
+                                         SocketAddress *src_addr,
                                          Error **errp)
 {
     QIOChannelSocket *sioc = qio_channel_socket_new();
@@ -92,16 +97,19 @@ socket_start_outgoing_migration_internal(MigrationState *s,
     data->s = s;
 
     /* in case previous migration leaked it */
-    qapi_free_SocketAddress(outgoing_args.saddr);
-    outgoing_args.saddr = saddr;
+    qapi_free_SocketAddress(socket_args.dst_addr);
+    qapi_free_SocketAddress(socket_args.src_addr);
+    socket_args.dst_addr = dst_addr;
+    socket_args.src_addr = src_addr;
 
-    if (saddr->type == SOCKET_ADDRESS_TYPE_INET) {
-        data->hostname = g_strdup(saddr->u.inet.host);
+    if (dst_addr->type == SOCKET_ADDRESS_TYPE_INET) {
+        data->hostname = g_strdup(dst_addr->u.inet.host);
     }
 
     qio_channel_set_name(QIO_CHANNEL(sioc), "migration-socket-outgoing");
     qio_channel_socket_connect_async(sioc,
-                                     saddr,
+                                     dst_addr,
+                                     src_addr,
                                      socket_outgoing_migration,
                                      data,
                                      socket_connect_data_free,
@@ -109,13 +117,15 @@ socket_start_outgoing_migration_internal(MigrationState *s,
 }
 
 void socket_start_outgoing_migration(MigrationState *s,
-                                     const char *str,
+                                     const char *dst_str,
+                                     const char *src_str,
                                      Error **errp)
 {
     Error *err = NULL;
-    SocketAddress *saddr = socket_parse(str, &err);
+    SocketAddress *dst_addr = socket_parse(dst_str, &err);
+    SocketAddress *src_addr = socket_parse(src_str, &err);
     if (!err) {
-        socket_start_outgoing_migration_internal(s, saddr, &err);
+        socket_start_outgoing_migration_internal(s, dst_addr, src_addr, &err);
     }
     error_propagate(errp, err);
 }
