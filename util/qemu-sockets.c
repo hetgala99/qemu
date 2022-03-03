@@ -359,12 +359,10 @@ listen_ok:
     ((rc) == -EINPROGRESS)
 #endif
 
-static int inet_connect_addr(const InetSocketAddress *dst_addr,
-                             const InetSocketAddress *src_addr,
+static int inet_connect_addr(const InetSocketAddress *saddr,
                              struct addrinfo *addr, Error **errp)
 {
     int sock, rc;
-    static uint16_t port_inc;
 
     sock = qemu_socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
     if (sock < 0) {
@@ -373,22 +371,6 @@ static int inet_connect_addr(const InetSocketAddress *dst_addr,
         return -1;
     }
     socket_set_fast_reuse(sock);
-
-    /* to bind the socket */
-    struct sockaddr_in servaddr;
-
-    /* bind to a specific interface in the internet domain */
-    /* to make sure the sin_zero filed is cleared */
-    memset(&servaddr, 0, sizeof(servaddr));
-
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = inet_addr(src_addr->host);
-    servaddr.sin_port = htons((uintptr_t) src_addr->port + port_inc++);
-
-    if( bind(sock, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
-        error_setg_errno(errp, errno, "Failed to bind socket");
-        return -1;
-    }
 
     /* connect to peer */
     do {
@@ -400,7 +382,7 @@ static int inet_connect_addr(const InetSocketAddress *dst_addr,
 
     if (rc < 0) {
         error_setg_errno(errp, errno, "Failed to connect to '%s:%s'",
-                         dst_addr->host, src_addr->port);
+                         saddr->host, saddr->port);
         closesocket(sock);
         return -1;
     }
@@ -465,13 +447,13 @@ static struct addrinfo *inet_parse_connect_saddr(InetSocketAddress *saddr,
  *
  * Returns: -1 on error, file descriptor on success.
  */
-int inet_connect_saddr(InetSocketAddress *dst_addr, InetSocketAddress *src_addr, Error **errp)
+int inet_connect_saddr(InetSocketAddress *saddr, Error **errp)
 {
     Error *local_err = NULL;
     struct addrinfo *res, *e;
     int sock = -1;
 
-    res = inet_parse_connect_saddr(dst_addr, errp);
+    res = inet_parse_connect_saddr(saddr, errp);
     if (!res) {
         return -1;
     }
@@ -481,12 +463,12 @@ int inet_connect_saddr(InetSocketAddress *dst_addr, InetSocketAddress *src_addr,
         local_err = NULL;
 
 #ifdef HAVE_IPPROTO_MPTCP
-        if (dst_addr->has_mptcp && dst_addr->mptcp) {
+        if (saddr->has_mptcp && saddr->mptcp) {
             e->ai_protocol = IPPROTO_MPTCP;
         }
 #endif
 
-        sock = inet_connect_addr(dst_addr, src_addr, e, &local_err);
+        sock = inet_connect_addr(saddr, e, &local_err);
         if (sock >= 0) {
             break;
         }
@@ -499,7 +481,7 @@ int inet_connect_saddr(InetSocketAddress *dst_addr, InetSocketAddress *src_addr,
         return sock;
     }
 
-    if (dst_addr->keep_alive) {
+    if (saddr->keep_alive) {
         int val = 1;
         int ret = qemu_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE,
                                   &val, sizeof(val));
@@ -746,7 +728,7 @@ int inet_connect(const char *str, Error **errp)
     InetSocketAddress *addr = g_new(InetSocketAddress, 1);
 
     if (!inet_parse(addr, str, errp)) {
-        sock = inet_connect_saddr(addr, NULL, errp);
+        sock = inet_connect_saddr(addr, errp);
     }
     qapi_free_InetSocketAddress(addr);
     return sock;
@@ -1201,25 +1183,25 @@ int socket_address_parse_named_fd(SocketAddress *addr, Error **errp)
     return 0;
 }
 
-int socket_connect(SocketAddress *dst_addr, SocketAddress *src_addr, Error **errp)
+int socket_connect(SocketAddress *addr, Error **errp)
 {
     int fd;
 
-    switch (dst_addr->type) {
+    switch (addr->type) {
     case SOCKET_ADDRESS_TYPE_INET:
-        fd = inet_connect_saddr(&dst_addr->u.inet, &src_addr->u.inet, errp);
+        fd = inet_connect_saddr(&addr->u.inet, errp);
         break;
 
     case SOCKET_ADDRESS_TYPE_UNIX:
-        fd = unix_connect_saddr(&dst_addr->u.q_unix, errp);
+        fd = unix_connect_saddr(&addr->u.q_unix, errp);
         break;
 
     case SOCKET_ADDRESS_TYPE_FD:
-        fd = socket_get_fd(dst_addr->u.fd.str, errp);
+        fd = socket_get_fd(addr->u.fd.str, errp);
         break;
 
     case SOCKET_ADDRESS_TYPE_VSOCK:
-        fd = vsock_connect_saddr(&dst_addr->u.vsock, errp);
+        fd = vsock_connect_saddr(&addr->u.vsock, errp);
         break;
 
     default:

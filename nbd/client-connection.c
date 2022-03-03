@@ -126,7 +126,7 @@ static int nbd_connect(QIOChannelSocket *sioc, SocketAddress *addr,
         *outioc = NULL;
     }
 
-    ret = qio_channel_socket_connect_sync(sioc, addr, NULL, errp);
+    ret = qio_channel_socket_connect_sync(sioc, addr, errp);
     if (ret < 0) {
         return ret;
     }
