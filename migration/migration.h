@@ -391,5 +391,6 @@ bool migration_rate_limit(void);
 void migration_cancel(const Error *error);
 
 void populate_vfio_info(MigrationInfo *info);
+int split_pos(const char *str);
 
 #endif

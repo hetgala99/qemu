@@ -452,7 +452,8 @@ void migrate_add_address(SocketAddress *address)
                       QAPI_CLONE(SocketAddress, address));
 }
 
-static void qemu_start_incoming_migration(const char *uri, Error **errp)
+static void qemu_start_incoming_migration(const char *uri,
+                                          uint8_t number, Error **errp)
 {
     const char *p = NULL;
 
@@ -462,7 +463,7 @@ static void qemu_start_incoming_migration(const char *uri, Error **errp)
         strstart(uri, "unix:", NULL) ||
         strstart(uri, "vsock:", NULL)) {
         migrate_protocol_allow_multifd(true);
-        socket_start_incoming_migration(p ? p : uri, errp);
+        socket_start_incoming_migration(p ? p : uri, number, errp);
 #ifdef CONFIG_RDMA
     } else if (strstart(uri, "rdma:", &p)) {
         rdma_start_incoming_migration(p, errp);
@@ -2085,6 +2086,38 @@ void migrate_del_blocker(Error *reason)
     migration_blockers = g_slist_remove(migration_blockers, reason);
 }
 
+static strList *strList_from_comma_list(const char *in)
+{
+    strList *res = NULL;
+    strList **tail = &res;
+
+    while (in && in[0]) {
+        char *comma = strchr(in, ',');
+        char *value;
+
+        if (comma) {
+            value = g_strndup(in, comma - in);
+            in = comma + 1; /* skip the , */
+        } else {
+            value = g_strdup(in);
+            in = NULL;
+        }
+        QAPI_LIST_APPEND(tail, value);
+    }
+
+    return res;
+}
+
+
+int split_pos(const char *str)
+{
+    int n = strlen(str);
+    while (n > 0 && str[n] != ':') {
+        n--;
+    }
+    return n;
+}
+
 void qmp_migrate_incoming(const char *uri, Error **errp)
 {
     Error *local_err = NULL;
@@ -2103,7 +2136,21 @@ void qmp_migrate_incoming(const char *uri, Error **errp)
         return;
     }
 
-    qemu_start_incoming_migration(uri, &local_err);
+    strList *st = strList_from_comma_list(uri);
+    strList *r;
+    int i = 0;
+    for (r = st; r; r = r->next) {
+        const char *str = r->value;
+        int n = split_pos(str);
+        const char *uri = g_strndup(str, n);
+        uint8_t number = atoi(str + n + 1);
+        if (i > 0) {
+            store_multifd_migration_params(uri, NULL, number,
+                                           i-1, &local_err);
+        }
+        i += 1;
+        qemu_start_incoming_migration(uri, number, &local_err);
+    }
 
     if (local_err) {
         yank_unregister_instance(MIGRATION_YANK_INSTANCE);
@@ -2142,7 +2189,7 @@ void qmp_migrate_recover(const char *uri, Error **errp)
      * only re-setup the migration stream and poke existing migration
      * to continue using that newly established channel.
      */
-    qemu_start_incoming_migration(uri, errp);
+    qemu_start_incoming_migration(uri, 0, errp);
 
     /* Safe to dereference with the assert above */
     if (*errp) {
@@ -2282,13 +2329,25 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
     return true;
 }
 
-void qmp_migrate(const char *uri, bool has_blk, bool blk,
+void qmp_migrate(MigrateUriList *uri, bool has_blk, bool blk,
                  bool has_inc, bool inc, bool has_detach, bool detach,
                  bool has_resume, bool resume, Error **errp)
 {
     Error *local_err = NULL;
     MigrationState *s = migrate_get_current();
-    const char *p = NULL;
+    const char *p1 = NULL, *p2 = NULL;
+
+    const char *dest_uri = uri->value->destination_uri;
+    const char *src_uri = uri->value->source_uri;
+
+    MigrateUriList *cap;
+    int i = 0;
+    for (cap = uri->next; cap; cap = cap->next) {
+        store_multifd_migration_params(cap->value->destination_uri,
+                                       cap->value->source_uri,
+                                       cap->value->multifd_channels,
+                                       i++,  &local_err);
+    }
 
     if (!migrate_prepare(s, has_blk && blk, has_inc && inc,
                          has_resume && resume, errp)) {
@@ -2303,19 +2362,20 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
     }
 
     migrate_protocol_allow_multifd(false);
-    if (strstart(uri, "tcp:", &p) ||
-        strstart(uri, "unix:", NULL) ||
-        strstart(uri, "vsock:", NULL)) {
+    if ((strstart(dest_uri, "tcp:", &p1) && strstart(src_uri, "tcp:", &p2)) ||
+       (strstart(dest_uri, "unix:", NULL) && strstart(src_uri, "unix:", NULL)) ||
+       (strstart(dest_uri, "vsock:", NULL) && strstart(src_uri, "vsock:", NULL))) {
         migrate_protocol_allow_multifd(true);
-        socket_start_outgoing_migration(s, p ? p : uri, &local_err);
+        socket_start_outgoing_migration(s, p1 ? p1 : dest_uri,
+                                        p2 ? p2 : src_uri, &local_err);
 #ifdef CONFIG_RDMA
-    } else if (strstart(uri, "rdma:", &p)) {
-        rdma_start_outgoing_migration(s, p, &local_err);
+    } else if (strstart(dest_uri, "rdma:", &p1)) {
+        rdma_start_outgoing_migration(s, p1, &local_err);
 #endif
-    } else if (strstart(uri, "exec:", &p)) {
-        exec_start_outgoing_migration(s, p, &local_err);
-    } else if (strstart(uri, "fd:", &p)) {
-        fd_start_outgoing_migration(s, p, &local_err);
+    } else if (strstart(dest_uri, "exec:", &p1)) {
+        exec_start_outgoing_migration(s, p1, &local_err);
+    } else if (strstart(dest_uri, "fd:", &p1)) {
+        fd_start_outgoing_migration(s, p1, &local_err);
     } else {
         if (!(has_resume && resume)) {
             yank_unregister_instance(MIGRATION_YANK_INSTANCE);

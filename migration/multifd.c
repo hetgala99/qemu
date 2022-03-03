@@ -230,7 +230,7 @@ static int multifd_recv_initial_packet(QIOChannel *c, Error **errp)
         return -1;
     }
 
-    if (msg.id > migrate_multifd_channels()) {
+    if (msg.id > total_multifd_channels()) {
         error_setg(errp, "multifd: received channel version %d "
                    "expected %d", msg.version, MULTIFD_VERSION);
         return -1;
@@ -425,8 +425,8 @@ static int multifd_send_pages(QEMUFile *f)
      * using more channels, so ensure it doesn't overflow if the
      * limit is lower now.
      */
-    next_channel %= migrate_multifd_channels();
-    for (i = next_channel;; i = (i + 1) % migrate_multifd_channels()) {
+    next_channel %= total_multifd_channels();
+    for (i = next_channel;; i = (i + 1) % total_multifd_channels()) {
         p = &multifd_send_state->params[i];
 
         qemu_mutex_lock(&p->mutex);
@@ -437,7 +437,7 @@ static int multifd_send_pages(QEMUFile *f)
         }
         if (!p->pending_job) {
             p->pending_job++;
-            next_channel = (i + 1) % migrate_multifd_channels();
+            next_channel = (i + 1) % total_multifd_channels();
             break;
         }
         qemu_mutex_unlock(&p->mutex);
@@ -517,7 +517,7 @@ static void multifd_send_terminate_threads(Error *err)
         return;
     }
 
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDSendParams *p = &multifd_send_state->params[i];
 
         qemu_mutex_lock(&p->mutex);
@@ -535,14 +535,14 @@ void multifd_save_cleanup(void)
         return;
     }
     multifd_send_terminate_threads(NULL);
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDSendParams *p = &multifd_send_state->params[i];
 
         if (p->running) {
             qemu_thread_join(&p->thread);
         }
     }
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDSendParams *p = &multifd_send_state->params[i];
         Error *local_err = NULL;
 
@@ -591,7 +591,7 @@ void multifd_send_sync_main(QEMUFile *f)
             return;
         }
     }
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDSendParams *p = &multifd_send_state->params[i];
 
         trace_multifd_send_sync_main_signal(p->id);
@@ -613,7 +613,7 @@ void multifd_send_sync_main(QEMUFile *f)
         qemu_mutex_unlock(&p->mutex);
         qemu_sem_post(&p->sem);
     }
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDSendParams *p = &multifd_send_state->params[i];
 
         trace_multifd_send_sync_main_wait(p->id);
@@ -885,6 +885,7 @@ int multifd_save_setup(Error **errp)
     uint32_t page_count = MULTIFD_PACKET_SIZE / qemu_target_page_size();
     uint8_t i;
     MigrationState *s;
+    int idx;
 
     if (!migrate_use_multifd()) {
         return 0;
@@ -895,7 +896,7 @@ int multifd_save_setup(Error **errp)
     }
 
     s = migrate_get_current();
-    thread_count = migrate_multifd_channels();
+    thread_count = total_multifd_channels();
     multifd_send_state = g_malloc0(sizeof(*multifd_send_state));
     multifd_send_state->params = g_new0(MultiFDSendParams, thread_count);
     multifd_send_state->pages = multifd_pages_init(page_count);
@@ -920,7 +921,8 @@ int multifd_save_setup(Error **errp)
         p->packet->version = cpu_to_be32(MULTIFD_VERSION);
         p->name = g_strdup_printf("multifdsend_%d", i);
         p->tls_hostname = g_strdup(s->hostname);
-        socket_send_channel_create(multifd_new_send_channel_async, p);
+        idx = multifd_index(i);
+        socket_send_channel_create(multifd_new_send_channel_async, p, idx);
     }
 
     for (i = 0; i < thread_count; i++) {
@@ -965,7 +967,7 @@ static void multifd_recv_terminate_threads(Error *err)
         }
     }
 
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDRecvParams *p = &multifd_recv_state->params[i];
 
         qemu_mutex_lock(&p->mutex);
@@ -991,7 +993,7 @@ int multifd_load_cleanup(Error **errp)
         return 0;
     }
     multifd_recv_terminate_threads(NULL);
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDRecvParams *p = &multifd_recv_state->params[i];
 
         if (p->running) {
@@ -1004,7 +1006,7 @@ int multifd_load_cleanup(Error **errp)
             qemu_thread_join(&p->thread);
         }
     }
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDRecvParams *p = &multifd_recv_state->params[i];
 
         migration_ioc_unregister_yank(p->c);
@@ -1037,13 +1039,13 @@ void multifd_recv_sync_main(void)
     if (!migrate_use_multifd()) {
         return;
     }
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDRecvParams *p = &multifd_recv_state->params[i];
 
         trace_multifd_recv_sync_main_wait(p->id);
         qemu_sem_wait(&multifd_recv_state->sem_sync);
     }
-    for (i = 0; i < migrate_multifd_channels(); i++) {
+    for (i = 0; i < total_multifd_channels(); i++) {
         MultiFDRecvParams *p = &multifd_recv_state->params[i];
 
         WITH_QEMU_LOCK_GUARD(&p->mutex) {
@@ -1140,7 +1142,7 @@ int multifd_load_setup(Error **errp)
         error_setg(errp, "multifd is not supported by current protocol");
         return -1;
     }
-    thread_count = migrate_multifd_channels();
+    thread_count = total_multifd_channels();
     multifd_recv_state = g_malloc0(sizeof(*multifd_recv_state));
     multifd_recv_state->params = g_new0(MultiFDRecvParams, thread_count);
     qatomic_set(&multifd_recv_state->count, 0);
@@ -1177,7 +1179,7 @@ int multifd_load_setup(Error **errp)
 
 bool multifd_recv_all_channels_created(void)
 {
-    int thread_count = migrate_multifd_channels();
+    int thread_count = total_multifd_channels();
 
     if (!migrate_use_multifd()) {
         return true;
@@ -1232,5 +1234,5 @@ bool multifd_recv_new_channel(QIOChannel *ioc, Error **errp)
                        QEMU_THREAD_JOINABLE);
     qatomic_inc(&multifd_recv_state->count);
     return qatomic_read(&multifd_recv_state->count) ==
-           migrate_multifd_channels();
+           total_multifd_channels();
 }

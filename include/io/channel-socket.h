@@ -90,7 +90,8 @@ qio_channel_socket_new_fd(int fd,
  * an error occurs.
  */
 int qio_channel_socket_connect_sync(QIOChannelSocket *ioc,
-                                    SocketAddress *addr,
+                                    SocketAddress *dst_addr,
+                                    SocketAddress *src_addr,
                                     Error **errp);
 
 /**
@@ -110,13 +111,14 @@ int qio_channel_socket_connect_sync(QIOChannelSocket *ioc,
  * parameter will be copied, so may be freed as soon
  * as this function returns without waiting for completion.
  */
+
 void qio_channel_socket_connect_async(QIOChannelSocket *ioc,
                                       SocketAddress *addr,
                                       QIOTaskFunc callback,
                                       gpointer opaque,
                                       GDestroyNotify destroy,
-                                      GMainContext *context);
-
+                                      GMainContext *context,
+                                      SocketAddress *src_addr);
 
 /**
  * qio_channel_socket_listen_sync:
