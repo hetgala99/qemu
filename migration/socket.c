@@ -28,7 +28,7 @@
 #include "trace.h"
 #include "multifd.h"
 
-#define MAX_MULTIFD_SOCKETS  20
+#define MAX_MULTIFD_SOCKETS 20
 
 
 struct SocketOutgoingArgs {
@@ -39,48 +39,55 @@ struct SocketArgs {
     SocketAddress *dst_addr;
     SocketAddress *src_addr;
     uint8_t multifd_channels;
-    
-};
+} *socket_args;
 
-struct SocketArgs *pt = NULL;
 
-int length = 0;
+int socket_args_len(void) 
+{
+    static int length;
+    if (length > 0) return length;
+    struct SocketArgs *ptr = &socket_args[0];
+    while (ptr->multifd_channels > 0) {
+        length += 1;
+        ptr++;
+    }
+    return length;
+}
 
 int total_multifd_channels(void)
 {
-/*  
-    struct SocketArgs *cap = &ptr;
-*/
-    static int channel_sum = 0;
-    static int i = 0;
-    for (; i<length; i++) {
-        if (i == length) {
-            break;
-        }
-        channel_sum += (pt+i)->multifd_channels;
+    static int channel_sum;
+    int length = socket_args_len();
+    static int i;
+    if (i == length) {
+        return channel_sum;
+    }
+    for (; i < length; i++) {
+        channel_sum += (socket_args + i)->multifd_channels;
     }
     return channel_sum;
 }
 
-int *get_multifd_channel_array(int count) 
+int *get_multifd_channel_array(int count)
 {
     int *r = malloc(count);
     int running_sum = 0;
-    for(int i=0; i<count; i++) {
-        running_sum += (pt+i)->multifd_channels;
-        r[i] = running_sum;    
+    for (int i = 0; i < count; i++) {
+        running_sum += (socket_args + i)->multifd_channels;
+        r[i] = running_sum;
     }
     return r;
 }
 
-int multifd_index(int i) {
+int multifd_index(int i)
+{
+    int length = socket_args_len();
     int *p = get_multifd_channel_array(length);
     int j = 0;
     while (j < length) {
-        if(i >= *(p+j)) {
+        if (i >= *(p + j)) {
             j++;
-        }
-        else {
+        } else {
             break;
         }
     }
@@ -88,22 +95,10 @@ int multifd_index(int i) {
 }
 
 void socket_send_channel_create(QIOTaskFunc f, void *data, int idx)
-{ 
-/*
+{
     QIOChannelSocket *sioc = qio_channel_socket_new();
-    for(int i=0; i<MAX_MULTIFD_SOCKETS; i++) {
-        uint8_t channel_count = pt[i].multifd_channels;
-        while (channel_count) {
-            qio_channel_socket_connect_async(sioc, pt[i].dst_addr,
-                                      f, data, NULL, NULL, src_uri);
-            channel_count -= 1;
-        }    
-    }
-    free(pt);
-*/
-    QIOChannelSocket *sioc = qio_channel_socket_new();
-    qio_channel_socket_connect_async(sioc, pt[idx].dst_addr,
-                                 f, data, NULL, NULL, pt[idx].src_addr);
+    qio_channel_socket_connect_async(sioc, socket_args[idx].dst_addr,
+                                 f, data, NULL, NULL, socket_args[idx].src_addr);
 }
 
 int socket_send_channel_destroy(QIOChannel *send)
@@ -152,7 +147,7 @@ static void
 socket_start_outgoing_migration_internal(MigrationState *s,
                                          SocketAddress *saddr,
                                          SocketAddress *src_addr,
-                                         Error **errp) 
+                                         Error **errp)
 {
     QIOChannelSocket *sioc = qio_channel_socket_new();
     struct SocketConnectData *data = g_new0(struct SocketConnectData, 1);
@@ -173,18 +168,18 @@ socket_start_outgoing_migration_internal(MigrationState *s,
                                      socket_outgoing_migration,
                                      data,
                                      socket_connect_data_free,
-                                     NULL, src_addr); 
+                                     NULL, src_addr);
 }
 
 
 void socket_start_outgoing_migration(MigrationState *s,
                                      const char *dst_str,
                                      const char *src_str,
-                                     Error **errp) 
+                                     Error **errp)
 {
     Error *err = NULL;
     SocketAddress *dst_addr = socket_parse(dst_str, &err);
-    SocketAddress *src_addr = socket_parse(src_str, &err); 
+    SocketAddress *src_addr = socket_parse(src_str, &err);
     if (!err) {
         socket_start_outgoing_migration_internal(s, dst_addr, src_addr, &err);
     }
@@ -192,27 +187,32 @@ void socket_start_outgoing_migration(MigrationState *s,
 }
 
 void store_multifd_migration_params(const char *dst_uri,
-                                    const char *src_uri, 
+                                    const char *src_uri,
                                     uint8_t multifd_channels,
-                                    int idx, Error **errp) 
-{ 
+                                    int idx, Error **errp)
+{
     Error *err = NULL;
     const char *p1 = NULL, *p2 = NULL;
-    if(pt == NULL) {
-        pt = (struct SocketArgs *)malloc(sizeof(struct SocketArgs) * MAX_MULTIFD_SOCKETS);   
+    if (socket_args == NULL) {
+        socket_args = (struct SocketArgs *) malloc(sizeof(struct SocketArgs) * MAX_MULTIFD_SOCKETS);
+        memset(socket_args, 0, sizeof(struct SocketArgs) * MAX_MULTIFD_SOCKETS);
     }
-    length = idx + 1;
-    SocketAddress *dst_addr;
-    SocketAddress *src_addr;
-    if(strstart(dst_uri, "tcp:", &p1) && strstart(src_uri, "tcp:", &p2)) {
-         dst_addr = socket_parse(p1 ? p1 : dst_uri, &err);
-         src_addr = socket_parse(p2 ? p2 : src_uri, &err);
+    SocketAddress *dst_addr = NULL, *src_addr = NULL;
+    if (dst_uri) {
+        if (strstart(dst_uri, "tcp:", &p1)) {
+            dst_addr = socket_parse(p1 ? p1 : dst_uri, &err);
+        }
     }
-   
-    if(!err) {
-        (pt+idx)->dst_addr = dst_addr;
-        (pt+idx)->src_addr = src_addr;
-        (pt+idx)->multifd_channels = multifd_channels;
+    if (src_uri) {
+        if (strstart(src_uri, "tcp:", &p2)) {
+            src_addr = socket_parse(p2 ? p2 : src_uri, &err);
+        }
+    }
+
+    if (!err) {
+        (socket_args + idx)->dst_addr = dst_addr;
+        (socket_args + idx)->src_addr = src_addr;
+        (socket_args + idx)->multifd_channels = multifd_channels;
     }
     error_propagate(errp, err);
 }
@@ -244,17 +244,16 @@ socket_incoming_migration_end(void *opaque)
 
 static void
 socket_start_incoming_migration_internal(SocketAddress *saddr,
-                                         Error **errp)
+                                         int number, Error **errp)
 {
     QIONetListener *listener = qio_net_listener_new();
     MigrationIncomingState *mis = migration_incoming_get_current();
     size_t i;
     int num = 1;
-
     qio_net_listener_set_name(listener, "migration-socket-listener");
-
+ 
     if (migrate_use_multifd()) {
-        num = total_multifd_channels();
+        num = number;
     }
 
     if (qio_net_listener_open_sync(listener, saddr, num, errp) < 0) {
@@ -281,12 +280,14 @@ socket_start_incoming_migration_internal(SocketAddress *saddr,
     }
 }
 
-void socket_start_incoming_migration(const char *str, Error **errp)
+
+void socket_start_incoming_migration(const char *str,
+                                     uint8_t number, Error **errp)
 {
     Error *err = NULL;
     SocketAddress *saddr = socket_parse(str, &err);
     if (!err) {
-        socket_start_incoming_migration_internal(saddr, &err);
+        socket_start_incoming_migration_internal(saddr, number, &err);
     }
     qapi_free_SocketAddress(saddr);
     error_propagate(errp, err);
